@@ -9,12 +9,10 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import (classification_report, confusion_matrix,
-                            roc_curve, roc_auc_score, accuracy_score,
-                            precision_score, recall_score, f1_score)
-
-# Disable the PyplotGlobalUseWarning
-st.set_option('deprecation.showPyplotGlobalUse', False)
+from sklearn.metrics import (
+    classification_report, confusion_matrix, roc_curve, roc_auc_score,
+    accuracy_score, precision_score, recall_score, f1_score
+)
 
 def show_fraud_analysis_page(df=None):
     st.header("Fraud Detection Analysis")
@@ -24,8 +22,8 @@ def show_fraud_analysis_page(df=None):
     It compares SVM and KNN models for fraud detection using the transaction_data.csv file.
     """)
     
-    # Load data from specific file path
     file_path = r'src/assets/transaction_data.csv'
+    
     try:
         data = pd.read_csv(file_path)
         
@@ -34,12 +32,12 @@ def show_fraud_analysis_page(df=None):
             data = pd.read_csv(file_path, sep=',')
             data = data[data.columns[0]].str.split(',', expand=True)
             data.columns = ['TransactionID', 'Timestamp', 'Amount', 'TransactionType', 
-                          'Location', 'IPAddress', 'UserID', 'IsFraud']
+                            'Location', 'IPAddress', 'UserID', 'IsFraud']
         
         with st.expander("View Transaction Data"):
             st.dataframe(data.head())
             st.write(f"Dataset shape: {data.shape}")
-            
+        
         if 'IsFraud' not in data.columns:
             st.error("The transaction_data.csv file doesn't contain an 'IsFraud' column.")
             st.write("Available columns:", data.columns.tolist())
@@ -52,7 +50,7 @@ def show_fraud_analysis_page(df=None):
 
         numerical_features = ['Amount']
         categorical_features = ['TransactionType', 'Location']
-        
+
         numerical_transformer = Pipeline([
             ('scaler', StandardScaler()),
             ('quantile', QuantileTransformer(output_distribution='normal', n_quantiles=100))
@@ -70,8 +68,8 @@ def show_fraud_analysis_page(df=None):
             X, y, test_size=0.25, random_state=42, stratify=y
         )
 
-        # Model Setup
         with st.spinner("Training models..."):
+            # Pipelines
             svm_pipeline = Pipeline([
                 ('preprocessor', preprocessor),
                 ('classifier', SVC(probability=True, random_state=42))
@@ -82,6 +80,7 @@ def show_fraud_analysis_page(df=None):
                 ('classifier', KNeighborsClassifier())
             ])
 
+            # Parameter Grids
             svm_param_grid = {
                 'classifier__C': [0.1, 1, 10],
                 'classifier__kernel': ['linear', 'rbf'],
@@ -94,6 +93,7 @@ def show_fraud_analysis_page(df=None):
                 'classifier__metric': ['euclidean', 'manhattan']
             }
 
+            # Grid Search
             svm_grid = GridSearchCV(svm_pipeline, svm_param_grid, cv=3, scoring='f1', n_jobs=-1)
             knn_grid = GridSearchCV(knn_pipeline, knn_param_grid, cv=3, scoring='f1', n_jobs=-1)
 
@@ -103,13 +103,14 @@ def show_fraud_analysis_page(df=None):
             best_svm = svm_grid.best_estimator_
             best_knn = knn_grid.best_estimator_
 
-        # Prediction & Evaluation
+        # Predictions
         y_pred_svm = best_svm.predict(X_test)
         y_pred_knn = best_knn.predict(X_test)
 
         y_proba_svm = best_svm.predict_proba(X_test)[:, 1]
         y_proba_knn = best_knn.predict_proba(X_test)[:, 1]
 
+        # Metrics
         metrics = {
             'Accuracy': [accuracy_score(y_test, y_pred_svm), accuracy_score(y_test, y_pred_knn)],
             'Precision': [precision_score(y_test, y_pred_svm), precision_score(y_test, y_pred_knn)],
@@ -122,7 +123,7 @@ def show_fraud_analysis_page(df=None):
         st.write("### Model Comparison (SVM vs KNN)")
         st.dataframe(comparison_df.style.format("{:.4f}"))
 
-        # Fraud Analysis Report
+        # Fraud Summary
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Total Transactions", len(y))
@@ -160,19 +161,10 @@ def show_fraud_analysis_page(df=None):
         # Best Parameters
         with st.expander("Show Best Model Parameters"):
             st.write("**SVM Best Parameters:**")
-            st.json({
-                "classifier__C": svm_grid.best_params_['classifier__C'],
-                "classifier__gamma": svm_grid.best_params_['classifier__gamma'],
-                "classifier__kernel": svm_grid.best_params_['classifier__kernel']
-            })
-            
+            st.json(svm_grid.best_params_)
             st.write("**KNN Best Parameters:**")
-            st.json({
-                "classifier__metric": knn_grid.best_params_['classifier__metric'],
-                "classifier__n_neighbors": knn_grid.best_params_['classifier__n_neighbors'],
-                "classifier__weights": knn_grid.best_params_['classifier__weights']
-            })
-            
+            st.json(knn_grid.best_params_)
+
     except FileNotFoundError:
         st.error(f"Transaction data file not found at: {file_path}")
     except Exception as e:
