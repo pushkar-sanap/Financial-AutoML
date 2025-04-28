@@ -18,6 +18,8 @@ from src.pages.data_analysis import show_data_analysis_page
 from src.pages.data_visualization import show_data_visualization_page
 from src.pages.modeling import show_modeling_page
 from src.pages.future_predictions import show_future_predictions_page
+from src.pages.fraud_analysis import show_fraud_analysis_page
+from src.pages.association_analysis import show_association_analysis_page  # Ensure this function is defined
 
 # Set page configuration
 st.set_page_config(
@@ -71,8 +73,15 @@ def run_automl_app():
                 if missing_strategy != "None":
                     df = handle_missing_values(df, missing_strategy)
             
-            # Tabs for different sections
-            tab1, tab2, tab3, tab4 = st.tabs(["Data Analysis", "Data Visualization", "Modeling", "Future Predictions"])
+            # Tabs for different sections - now including Association and Fraud Analysis
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                "Data Analysis", 
+                "Data Visualization", 
+                "Modeling", 
+                "Future Predictions",
+                "Fraud Analysis",
+                "Association"
+            ])
             
             with tab1:
                 show_data_analysis_page(df)
@@ -85,6 +94,12 @@ def run_automl_app():
             
             with tab4:
                 show_future_predictions_page(df, date_column)
+                
+            with tab5:
+                show_fraud_analysis_page()
+                
+            with tab6:
+                show_association_analysis_page()  # Association analysis tab functionality
     else:
         # Display instructions when no file is uploaded
         st.info("👆 Please upload a CSV file to get started.")
@@ -101,6 +116,7 @@ def run_automl_app():
         - Personal expense tracker with dates, amounts, and categories
         - Company financial statements with revenue, expenses, and profit over time
         - Investment portfolio performance with dates and returns
+        - Transaction data with 'IsFraud' column for fraud detection
         """)
         
         # Sample dataset
@@ -110,4 +126,4 @@ def run_automl_app():
 
 # Run the app
 if __name__ == "__main__":
-    run_automl_app() 
+    run_automl_app()
