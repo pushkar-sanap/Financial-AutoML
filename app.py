@@ -1,33 +1,1137 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, AdaBoostRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+import xgboost as xgb
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.stattools import adfuller
 import warnings
+import io
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+import base64
+import os
+from prophet import Prophet
+from sklearn.svm import SVR
+from sklearn.neural_network import MLPRegressor
+import shap
+from sklearn.cluster import KMeans
+from sklearn.ensemble import IsolationForest
+from sklearn.decomposition import PCA
+from mlxtend.frequent_patterns import apriori, association_rules
+
+# Suppress warnings
 warnings.filterwarnings('ignore')
 
-# Import utility modules
-from src.utils.data_processing import (
-    load_data, 
-    convert_date_column, 
-    handle_missing_values, 
-    display_missing_values, 
-    create_sample_data
-)
+# Function to generate PDF report
+def generate_pdf_report(df, date_column, numeric_columns, financial_ratios=None):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elements = []
+    
+    # Title
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=30
+    )
+    elements.append(Paragraph("Financial Analysis Report", title_style))
+    elements.append(Spacer(1, 12))
+    
+    # Summary Statistics
+    elements.append(Paragraph("Summary Statistics", styles['Heading2']))
+    elements.append(Spacer(1, 12))
+    
+    # Convert summary statistics to table
+    summary_stats = df.describe()
+    summary_data = [['Statistic'] + list(summary_stats.columns)]
+    for idx in summary_stats.index:
+        summary_data.append([idx] + [f"{val:.2f}" for val in summary_stats.loc[idx]])
+    
+    summary_table = Table(summary_data)
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 20))
+    
+    # Data Types
+    elements.append(Paragraph("Data Types", styles['Heading2']))
+    elements.append(Spacer(1, 12))
+    
+    data_types = pd.DataFrame({
+        'Column': df.columns,
+        'Data Type': df.dtypes.values,
+        'Non-Null Count': df.count().values,
+        'Null Count': df.isna().sum().values
+    })
+    
+    dtype_data = [['Column', 'Data Type', 'Non-Null Count', 'Null Count']]
+    for _, row in data_types.iterrows():
+        dtype_data.append([str(val) for val in row])
+    
+    dtype_table = Table(dtype_data)
+    dtype_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(dtype_table)
+    elements.append(Spacer(1, 20))
+    
+    # Correlation Analysis
+    if len(numeric_columns) > 0:
+        elements.append(Paragraph("Correlation Analysis", styles['Heading2']))
+        elements.append(Spacer(1, 12))
+        
+        # Create correlation heatmap
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(df[numeric_columns].corr(), annot=True, cmap='coolwarm')
+        plt.title("Correlation Heatmap")
+        
+        # Save heatmap to buffer
+        img_buffer = io.BytesIO()
+        plt.savefig(img_buffer, format='png')
+        img_buffer.seek(0)
+        
+        # Add heatmap to PDF
+        elements.append(Image(img_buffer, width=6*inch, height=4*inch))
+        elements.append(Spacer(1, 20))
+    
+    # Financial Ratios (if provided)
+    if financial_ratios:
+        elements.append(Paragraph("Financial Ratios", styles['Heading2']))
+        elements.append(Spacer(1, 12))
+        
+        ratio_data = [['Ratio', 'Value', 'Interpretation']]
+        for ratio_name, ratio_info in financial_ratios.items():
+            ratio_data.append([
+                ratio_name,
+                f"{ratio_info['value']:.2f}",
+                ratio_info['interpretation']
+            ])
+        
+        ratio_table = Table(ratio_data)
+        ratio_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(ratio_table)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
-# Import page modules
-from src.pages.data_analysis import show_data_analysis_page
-from src.pages.data_visualization import show_data_visualization_page
-from src.pages.modeling import show_modeling_page
-from src.pages.future_predictions import show_future_predictions_page
+def load_data(uploaded_file):
+    try:
+        # Check file extension and read accordingly
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        if file_extension == 'csv':
+            df = pd.read_csv(uploaded_file)
+        elif file_extension in ['xlsx', 'xls']:
+            df = pd.read_excel(uploaded_file)
+        else:
+            st.error("Unsupported file format. Please upload a CSV or Excel file.")
+            return None
+            
+        st.success("Data loaded successfully!")
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None
 
-# Set page configuration
+def convert_date_column(df, date_column):
+    if date_column != "None":
+        try:
+            df[date_column] = pd.to_datetime(df[date_column])
+            df = df.sort_values(by=date_column)
+            st.info(f"Converted '{date_column}' to datetime and sorted data.")
+        except Exception as e:
+            st.error(f"Error converting date column: {e}")
+    return df
+
+def display_missing_values(df):
+    if df.isna().sum().sum() > 0:
+        st.subheader("Missing Values")
+        missing_df = pd.DataFrame({
+            'Column': df.columns,
+            'Missing Values': df.isna().sum().values,
+            'Percentage': (df.isna().sum().values / len(df)) * 100
+        })
+        st.dataframe(missing_df)
+        return True
+    return False
+
+def handle_missing_values(df, strategy):
+    numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+    
+    if strategy == "Drop":
+        df = df.dropna()
+        st.info("Dropped rows with missing values")
+    elif strategy == "Fill with mean":
+        for col in numeric_columns:
+            df[col].fillna(df[col].mean(), inplace=True)
+        st.info("Filled numerical missing values with mean")
+    elif strategy == "Fill with median":
+        for col in numeric_columns:
+            df[col].fillna(df[col].median(), inplace=True)
+        st.info("Filled numerical missing values with median")
+    elif strategy == "Fill with 0":
+        df.fillna(0, inplace=True)
+        st.info("Filled missing values with 0")
+    elif strategy == "Forward fill":
+        df.fillna(method='ffill', inplace=True)
+        st.info("Filled missing values using forward fill")
+    elif strategy == "Backward fill":
+        df.fillna(method='bfill', inplace=True)
+        st.info("Filled missing values using backward fill")
+    return df
+
+def create_sample_data():
+    sample_data = {
+        'Date': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05'],
+        'Revenue': [1000, 1200, 950, 1100, 1300],
+        'Expenses': [800, 750, 820, 780, 850],
+        'Profit': [200, 450, 130, 320, 450],
+        'Category': ['Product A', 'Product B', 'Product A', 'Product C', 'Product B'],
+        'IsFraud': [0, 0, 1, 0, 0]  # Added for fraud analysis
+    }
+    return pd.DataFrame(sample_data)
+
+def show_data_analysis_page(df):
+    """Enhanced data analysis page with more features"""
+    st.subheader("Summary Statistics")
+    st.dataframe(df.describe())
+    
+    st.subheader("Data Types")
+    data_types = pd.DataFrame({
+        'Column': df.columns,
+        'Data Type': df.dtypes.values,
+        'Non-Null Count': df.count().values,
+        'Null Count': df.isna().sum().values
+    })
+    st.dataframe(data_types)
+    
+    st.subheader("Correlation Analysis")
+    numeric_df = df.select_dtypes(include=np.number)
+    if not numeric_df.empty:
+        fig, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(numeric_df.corr(), annot=True, cmap='coolwarm', ax=ax)
+        st.pyplot(fig)
+    else:
+        st.info("No numerical columns for correlation analysis")
+    
+    st.subheader("Distributions of Numerical Columns")
+    num_cols = df.select_dtypes(include=np.number).columns.tolist()
+    selected_cols = st.multiselect(
+        "Select columns for distribution analysis",
+        options=num_cols,
+        default=num_cols[:min(5, len(num_cols))]
+    )
+    
+    if selected_cols:
+        for col in selected_cols:
+            fig = px.histogram(df, x=col, title=f"Distribution of {col}")
+            st.plotly_chart(fig)
+    
+    st.subheader("Financial Ratio Calculator")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Balance Sheet Items")
+        current_assets = st.number_input("Current Assets", min_value=0.0, value=0.0, step=1000.0, key="current_assets")
+        current_liabilities = st.number_input("Current Liabilities", min_value=0.0, value=0.0, step=1000.0, key="current_liabilities")
+        total_assets = st.number_input("Total Assets", min_value=0.0, value=0.0, step=1000.0, key="total_assets")
+        total_liabilities = st.number_input("Total Liabilities", min_value=0.0, value=0.0, step=1000.0, key="total_liabilities")
+        total_equity = st.number_input("Total Equity", min_value=0.0, value=0.0, step=1000.0, key="total_equity")
+        inventory = st.number_input("Inventory", min_value=0.0, value=0.0, step=1000.0, key="inventory")
+    
+    with col2:
+        st.subheader("Income Statement Items")
+        revenue = st.number_input("Revenue/Sales", min_value=0.0, value=0.0, step=1000.0, key="revenue")
+        cost_of_goods_sold = st.number_input("Cost of Goods Sold", min_value=0.0, value=0.0, step=1000.0, key="cogs")
+        gross_profit = st.number_input("Gross Profit", min_value=0.0, value=0.0, step=1000.0, key="gross_profit")
+        operating_expenses = st.number_input("Operating Expenses", min_value=0.0, value=0.0, step=1000.0, key="op_expenses")
+        net_income = st.number_input("Net Income", min_value=0.0, value=0.0, step=1000.0, key="net_income")
+        interest_expense = st.number_input("Interest Expense", min_value=0.0, value=0.0, step=1000.0, key="interest_expense")
+    
+    # Calculate ratios
+    ratio_col1, ratio_col2 = st.columns(2)
+    
+    with ratio_col1:
+        st.subheader("Liquidity Ratios")
+        current_ratio = current_assets / current_liabilities if current_liabilities != 0 else 0
+        st.metric("Current Ratio", f"{current_ratio:.2f}", 
+                 help="Measures a company's ability to pay short-term obligations. > 1 is healthy.")
+        
+        quick_assets = current_assets - inventory
+        quick_ratio = quick_assets / current_liabilities if current_liabilities != 0 else 0
+        st.metric("Quick Ratio", f"{quick_ratio:.2f}",
+                 help="Measures ability to meet short-term obligations with most liquid assets. > 1 is healthy.")
+        
+        cash_ratio = (current_assets - inventory) / current_liabilities if current_liabilities != 0 else 0
+        st.metric("Cash Ratio", f"{cash_ratio:.2f}",
+                 help="Measures ability to pay short-term debt with cash and cash equivalents.")
+        
+        # Store in session state for PDF report
+        st.session_state.current_ratio = current_ratio
+        st.session_state.quick_ratio = quick_ratio
+    
+    with ratio_col2:
+        st.subheader("Profitability Ratios")
+        gross_profit_margin = (gross_profit / revenue * 100) if revenue != 0 else 0
+        st.metric("Gross Profit Margin", f"{gross_profit_margin:.2f}%",
+                 help="Shows percentage of revenue retained after direct costs.")
+        
+        operating_margin = ((revenue - cost_of_goods_sold - operating_expenses) / revenue * 100) if revenue != 0 else 0
+        st.metric("Operating Margin", f"{operating_margin:.2f}%",
+                 help="Shows percentage of revenue retained after operating expenses.")
+        
+        net_profit_margin = (net_income / revenue * 100) if revenue != 0 else 0
+        st.metric("Net Profit Margin", f"{net_profit_margin:.2f}%",
+                 help="Shows percentage of revenue retained as net income.")
+        
+        # Store in session state for PDF report
+        st.session_state.gross_profit_margin = gross_profit_margin
+    
+    ratio_col3, ratio_col4 = st.columns(2)
+    
+    with ratio_col3:
+        st.subheader("Efficiency Ratios")
+        inventory_turnover = cost_of_goods_sold / inventory if inventory != 0 else 0
+        st.metric("Inventory Turnover", f"{inventory_turnover:.2f}",
+                 help="Shows how many times inventory is sold and replaced over a period.")
+        
+        asset_turnover = revenue / total_assets if total_assets != 0 else 0
+        st.metric("Asset Turnover", f"{asset_turnover:.2f}",
+                 help="Shows how efficiently assets are used to generate revenue.")
+    
+    with ratio_col4:
+        st.subheader("Leverage Ratios")
+        debt_to_equity = total_liabilities / total_equity if total_equity != 0 else 0
+        st.metric("Debt to Equity Ratio", f"{debt_to_equity:.2f}",
+                 help="Shows proportion of debt and equity used to finance assets.")
+        
+        interest_coverage = (net_income + interest_expense) / interest_expense if interest_expense != 0 else 0
+        st.metric("Interest Coverage Ratio", f"{interest_coverage:.2f}",
+                 help="Shows ability to pay interest on outstanding debt.")
+        
+        # Store in session state for PDF report
+        st.session_state.debt_to_equity = debt_to_equity
+    
+    st.markdown("### Ratio Interpretation")
+    st.markdown("""
+    - **Current Ratio**: > 1.5 is healthy, indicating good short-term financial health
+    - **Quick Ratio**: > 1 is good, showing strong liquidity without relying on inventory
+    - **Gross Profit Margin**: Varies by industry, but higher is generally better
+    - **Operating Margin**: Shows operational efficiency, higher is better
+    - **Net Profit Margin**: Indicates overall profitability, varies by industry
+    - **Inventory Turnover**: Higher is better, showing efficient inventory management
+    - **Debt to Equity**: < 2 is generally considered healthy
+    - **Interest Coverage**: > 2 is healthy, showing good ability to service debt
+    """)
+
+def visualize_data(df, date_column, tab):
+    """Enhanced data visualization with more plot types"""
+    st.subheader("Interactive Data Visualization")
+    
+    # Time series visualization if date column exists
+    if date_column != "None":
+        st.subheader("Time Series Analysis")
+        
+        ts_cols = st.multiselect(
+            "Select numerical columns for time series visualization",
+            options=df.select_dtypes(include=np.number).columns.tolist(),
+            default=df.select_dtypes(include=np.number).columns.tolist()[:min(2, len(df.columns))]
+        )
+        
+        if ts_cols:
+            for col in ts_cols:
+                st.subheader(f"Analysis for {col}")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig = px.line(df, x=date_column, y=col, title=f"{col} Over Time")
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    df_ma = df.copy()
+                    df_ma[f'{col}_MA7'] = df[col].rolling(window=7).mean()
+                    df_ma[f'{col}_MA30'] = df[col].rolling(window=30).mean()
+                    
+                    fig = px.line(df_ma, x=date_column, 
+                                y=[col, f"{col}_MA7", f"{col}_MA30"],
+                                title=f"Moving Averages for {col}")
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                if len(df) >= 14:
+                    try:
+                        st.subheader(f"Seasonal Decomposition for {col}")
+                        
+                        dec_col1, dec_col2 = st.columns(2)
+                        
+                        decomposition = seasonal_decompose(df[col], model='additive', period=7)
+                        
+                        with dec_col1:
+                            fig1 = go.Figure()
+                            fig1.add_trace(go.Scatter(x=df[date_column], y=decomposition.observed, 
+                                                     mode='lines', name='Observed'))
+                            st.plotly_chart(fig1, use_container_width=True)
+                            
+                            fig2 = go.Figure()
+                            fig2.add_trace(go.Scatter(x=df[date_column], y=decomposition.trend, 
+                                                     mode='lines', name='Trend'))
+                            st.plotly_chart(fig2, use_container_width=True)
+                        
+                        with dec_col2:
+                            fig3 = go.Figure()
+                            fig3.add_trace(go.Scatter(x=df[date_column], y=decomposition.seasonal, 
+                                                     mode='lines', name='Seasonal'))
+                            st.plotly_chart(fig3, use_container_width=True)
+                            
+                            fig4 = go.Figure()
+                            fig4.add_trace(go.Scatter(x=df[date_column], y=decomposition.resid, 
+                                                     mode='lines', name='Residual'))
+                            st.plotly_chart(fig4, use_container_width=True)
+                            
+                    except Exception as e:
+                        st.warning(f"Could not perform seasonal decomposition: {e}")
+    
+    # Scatter plot matrix
+    st.subheader("Scatter Plot Matrix")
+    num_cols = df.select_dtypes(include=np.number).columns.tolist()
+    if len(num_cols) >= 2:
+        selected_cols = st.multiselect(
+            "Select columns for scatter matrix",
+            options=num_cols,
+            default=num_cols[:min(5, len(num_cols))]
+        )
+        if len(selected_cols) >= 2:
+            fig = px.scatter_matrix(df[selected_cols])
+            st.plotly_chart(fig)
+    
+    # Pair plot
+    st.subheader("Pair Plot")
+    if len(num_cols) >= 2:
+        selected_cols = st.multiselect(
+            "Select columns for pair plot",
+            options=num_cols,
+            default=num_cols[:min(5, len(num_cols))]
+        )
+        if len(selected_cols) >= 2:
+            fig = sns.pairplot(df[selected_cols])
+            st.pyplot(fig)
+    
+    # Category visualization
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    if cat_cols:
+        st.subheader("Categorical Data Analysis")
+        cat_col = st.selectbox("Select categorical column", options=cat_cols)
+        
+        value_counts = df[cat_col].value_counts().reset_index()
+        value_counts.columns = ['Category', 'count']
+        fig = px.bar(value_counts, x='Category', y='count', 
+                     title=f"Count of {cat_col}")
+        st.plotly_chart(fig)
+        
+        if num_cols:
+            num_col = st.selectbox("Select numerical column for analysis with categories", 
+                                  options=num_cols)
+            
+            fig = px.box(df, x=cat_col, y=num_col, 
+                         title=f"{num_col} Distribution by {cat_col}")
+            st.plotly_chart(fig)
+
+def show_modeling(df, numeric_cols):
+    """Enhanced modeling with more algorithms and interpretability"""
+    st.subheader("Model Configuration")
+    
+    target_col = st.selectbox(
+        "Select target column for prediction",
+        options=numeric_cols
+    )
+    
+    feature_cols = [col for col in numeric_cols if col != target_col]
+    
+    if feature_cols:
+        selected_features = st.multiselect(
+            "Select features for modeling",
+            options=feature_cols,
+            default=feature_cols
+        )
+        
+        if selected_features:
+            test_size = st.slider("Test size (%)", 10, 50, 20) / 100
+            random_state = 42
+            
+            X = df[selected_features]
+            y = df[target_col]
+            
+            # Handle categorical variables
+            X = pd.get_dummies(X, drop_first=True)
+            
+            # Split the data
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, random_state=random_state
+            )
+            
+            # Scale features
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
+            
+            # Expanded model selection
+            models = {
+                "Linear Regression": LinearRegression(),
+                "Polynomial Regression": Pipeline([
+                    ('poly', PolynomialFeatures(degree=2)),
+                    ('linear', LinearRegression())
+                ]),
+                "Random Forest": RandomForestRegressor(random_state=random_state),
+                "Gradient Boosting": GradientBoostingRegressor(random_state=random_state),
+                "XGBoost": xgb.XGBRegressor(random_state=random_state),
+                "AdaBoost": AdaBoostRegressor(random_state=random_state),
+                "K-Nearest Neighbors": KNeighborsRegressor(n_neighbors=5),
+                "Support Vector Regression": SVR(),
+                "Neural Network": MLPRegressor(random_state=random_state, max_iter=1000)
+            }
+            
+            selected_models = st.multiselect(
+                "Select models to train",
+                options=list(models.keys()),
+                default=["Linear Regression", "Random Forest"]
+            )
+            
+            if selected_models and st.button("Train Models"):
+                st.subheader("Model Performance")
+                
+                results = []
+                trained_models = {}
+                
+                for model_name in selected_models:
+                    st.text(f"Training {model_name}...")
+                    model = models[model_name]
+                    model.fit(X_train_scaled, y_train)
+                    trained_models[model_name] = model
+                    
+                    y_pred = model.predict(X_test_scaled)
+                    
+                    mse = mean_squared_error(y_test, y_pred)
+                    rmse = np.sqrt(mse)
+                    mae = mean_absolute_error(y_test, y_pred)
+                    r2 = r2_score(y_test, y_pred)
+                    
+                    results.append({
+                        'Model': model_name,
+                        'MSE': mse,
+                        'RMSE': rmse,
+                        'MAE': mae,
+                        'R2 Score': r2
+                    })
+                
+                results_df = pd.DataFrame(results)
+                st.dataframe(results_df)
+                
+                best_model_name = results_df.loc[results_df['R2 Score'].idxmax()]['Model']
+                st.success(f"Best model: {best_model_name} with R2 Score: {results_df['R2 Score'].max():.4f}")
+                
+                best_model = trained_models[best_model_name]
+                y_pred_best = best_model.predict(X_test_scaled)
+                
+                fig = px.scatter(x=y_test, y=y_pred_best, 
+                                labels={'x': 'Actual', 'y': 'Predicted'},
+                                title=f'Actual vs Predicted ({best_model_name})')
+                fig.add_trace(go.Scatter(x=[y_test.min(), y_test.max()], 
+                                        y=[y_test.min(), y_test.max()],
+                                        mode='lines', name='Perfect Prediction'))
+                st.plotly_chart(fig)
+                
+                # SHAP values for interpretability
+                if best_model_name in ["Random Forest", "Gradient Boosting", "XGBoost"]:
+                    st.subheader("Model Interpretability")
+                    
+                    explainer = shap.TreeExplainer(best_model)
+                    shap_values = explainer.shap_values(X_test_scaled)
+                    
+                    fig, ax = plt.subplots()
+                    shap.summary_plot(shap_values, X_test_scaled, feature_names=X.columns, plot_type="bar")
+                    st.pyplot(fig)
+                    
+                    st.subheader("Feature Importance")
+                    importance_df = pd.DataFrame({
+                        'Feature': X.columns,
+                        'Importance': best_model.feature_importances_
+                    }).sort_values('Importance', ascending=False)
+                    
+                    fig = px.bar(importance_df, x='Feature', y='Importance',
+                                title=f'Feature Importance ({best_model_name})')
+                    st.plotly_chart(fig)
+                
+                # Save best model info for predictions
+                st.session_state['best_model'] = best_model
+                st.session_state['best_model_name'] = best_model_name
+                st.session_state['feature_columns'] = X.columns.tolist()
+                st.session_state['scaler'] = scaler
+                st.session_state['target_column'] = target_col
+
+def show_future_predictions_page(df, date_column):
+    """Enhanced future predictions with more forecasting methods"""
+    if date_column != "None":
+        if 'best_model' in st.session_state:
+            pred_tab1, pred_tab2, pred_tab3 = st.tabs([
+                "Time Series Forecasting", 
+                "Normal Predictions",
+                "Prophet Forecasting"
+            ])
+            
+            with pred_tab1:
+                st.subheader("Time Series Forecasting")
+                
+                model_col1, model_col2 = st.columns(2)
+                
+                with model_col1:
+                    selected_model = st.selectbox(
+                        "Select Time Series Model",
+                        options=["ARIMA", "Exponential Smoothing", "SARIMA", "Machine Learning Model"],
+                        key="ts_model_select"
+                    )
+                
+                with model_col2:
+                    forecast_periods = st.slider(
+                        "Forecast Periods",
+                        min_value=1,
+                        max_value=365,
+                        value=30,
+                        key="forecast_periods"
+                    )
+                
+                target_col = st.selectbox(
+                    "Select column to forecast",
+                    options=df.select_dtypes(include=np.number).columns.tolist(),
+                    key="forecast_target"
+                )
+                
+                if st.button("Generate Time Series Forecast"):
+                    try:
+                        ts_data = df.set_index(date_column)[target_col]
+                        
+                        adf_result = adfuller(ts_data)
+                        st.info(f"ADF Test p-value: {adf_result[1]:.4f}")
+                        
+                        if selected_model == "ARIMA":
+                            st.subheader("ARIMA Model")
+                            
+                            p = st.slider("AR order (p)", 0, 5, 1, key="p")
+                            d = st.slider("Difference order (d)", 0, 2, 1, key="d")
+                            q = st.slider("MA order (q)", 0, 5, 1, key="q")
+                            
+                            model = ARIMA(ts_data, order=(p, d, q))
+                            model_fit = model.fit()
+                            
+                            forecast_result = model_fit.get_forecast(steps=forecast_periods)
+                            forecast = forecast_result.predicted_mean
+                            forecast_ci = forecast_result.conf_int(alpha=0.05)
+                            future_dates = pd.date_range(start=ts_data.index[-1], periods=forecast_periods+1)[1:]
+                            
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                x=ts_data.index,
+                                y=ts_data.values,
+                                mode='lines',
+                                name='Historical',
+                                line=dict(color='blue')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast,
+                                mode='lines',
+                                name='Forecast',
+                                line=dict(color='red')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast_ci.iloc[:, 1],
+                                mode='lines',
+                                name='Upper Bound',
+                                line=dict(width=0),
+                                showlegend=False
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast_ci.iloc[:, 0],
+                                mode='lines',
+                                name='Lower Bound',
+                                line=dict(width=0),
+                                fill='tonexty',
+                                fillcolor='rgba(255, 0, 0, 0.2)',
+                                showlegend=False
+                            ))
+                            st.plotly_chart(fig)
+                            
+                            forecast_df = pd.DataFrame({
+                                'Date': future_dates,
+                                'Forecast': forecast,
+                                'Lower Bound': forecast_ci.iloc[:, 0],
+                                'Upper Bound': forecast_ci.iloc[:, 1]
+                            })
+                            st.dataframe(forecast_df)
+                        
+                        elif selected_model == "Exponential Smoothing":
+                            st.subheader("Exponential Smoothing")
+                            
+                            trend_type = st.selectbox(
+                                "Trend Type",
+                                options=['add', 'mul', None],
+                                key="trend"
+                            )
+                            seasonal_type = st.selectbox(
+                                "Seasonal Type",
+                                options=['add', 'mul', None],
+                                key="seasonal"
+                            )
+                            seasonal_periods = st.slider(
+                                "Seasonal Periods",
+                                min_value=2,
+                                max_value=12,
+                                value=7,
+                                key="seasonal_periods"
+                            )
+                            
+                            model = ExponentialSmoothing(
+                                ts_data,
+                                trend=trend_type,
+                                seasonal=seasonal_type,
+                                seasonal_periods=seasonal_periods
+                            ).fit()
+                            
+                            forecast_result = model.get_prediction(start=len(ts_data), end=len(ts_data) + forecast_periods - 1)
+                            forecast = forecast_result.predicted_mean
+                            forecast_ci = forecast_result.conf_int(alpha=0.05)
+                            future_dates = pd.date_range(start=ts_data.index[-1], periods=forecast_periods+1)[1:]
+                            
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                x=ts_data.index,
+                                y=ts_data.values,
+                                mode='lines',
+                                name='Historical',
+                                line=dict(color='blue')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast,
+                                mode='lines',
+                                name='Forecast',
+                                line=dict(color='red')
+                            ))
+                            st.plotly_chart(fig)
+                            
+                        elif selected_model == "SARIMA":
+                            st.subheader("SARIMA Model")
+                            
+                            p = st.slider("AR order (p)", 0, 3, 1, key="sarima_p")
+                            d = st.slider("Difference order (d)", 0, 2, 1, key="sarima_d")
+                            q = st.slider("MA order (q)", 0, 3, 1, key="sarima_q")
+                            P = st.slider("Seasonal AR order (P)", 0, 2, 1, key="sarima_P")
+                            D = st.slider("Seasonal difference order (D)", 0, 2, 1, key="sarima_D")
+                            Q = st.slider("Seasonal MA order (Q)", 0, 2, 1, key="sarima_Q")
+                            m = st.slider("Seasonal period (m)", 2, 12, 7, key="sarima_m")
+                            
+                            model = SARIMAX(
+                                ts_data,
+                                order=(p, d, q),
+                                seasonal_order=(P, D, Q, m)
+                            )
+                            model_fit = model.fit(disp=False)
+                            
+                            forecast_result = model_fit.get_forecast(steps=forecast_periods)
+                            forecast = forecast_result.predicted_mean
+                            forecast_ci = forecast_result.conf_int(alpha=0.05)
+                            future_dates = pd.date_range(start=ts_data.index[-1], periods=forecast_periods+1)[1:]
+                            
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                x=ts_data.index,
+                                y=ts_data.values,
+                                mode='lines',
+                                name='Historical',
+                                line=dict(color='blue')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast,
+                                mode='lines',
+                                name='Forecast',
+                                line=dict(color='red')
+                            ))
+                            st.plotly_chart(fig)
+                            
+                        elif selected_model == "Machine Learning Model":
+                            st.subheader("Machine Learning Model Forecast")
+                            
+                            best_model = st.session_state['best_model']
+                            best_model_name = st.session_state['best_model_name']
+                            feature_columns = st.session_state['feature_columns']
+                            scaler = st.session_state['scaler']
+                            
+                            last_date = df[date_column].max()
+                            future_dates = pd.date_range(start=last_date, periods=forecast_periods+1)[1:]
+                            
+                            future_df = pd.DataFrame({date_column: future_dates})
+                            
+                            for feature in feature_columns:
+                                if feature in df.columns:
+                                    historical_values = df[feature].values
+                                    X_trend = np.arange(len(historical_values)).reshape(-1, 1)
+                                    trend_model = LinearRegression()
+                                    trend_model.fit(X_trend, historical_values)
+                                    X_future_trend = np.arange(len(historical_values), 
+                                                              len(historical_values) + forecast_periods).reshape(-1, 1)
+                                    trend_values = trend_model.predict(X_future_trend)
+                                    historical_std = np.std(historical_values)
+                                    random_noise = np.random.normal(0, historical_std * 0.1, forecast_periods)
+                                    future_df[feature] = trend_values + random_noise
+                            
+                            X_future = future_df[feature_columns]
+                            X_future_scaled = scaler.transform(X_future)
+                            forecast = best_model.predict(X_future_scaled)
+                            
+                            y_pred_historical = best_model.predict(scaler.transform(df[feature_columns]))
+                            prediction_errors = df[st.session_state['target_column']] - y_pred_historical
+                            error_std = np.std(prediction_errors)
+                            
+                            forecast_lower = forecast - 1.96 * error_std
+                            forecast_upper = forecast + 1.96 * error_std
+                            
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                x=df[date_column],
+                                y=df[st.session_state['target_column']],
+                                mode='lines',
+                                name='Historical',
+                                line=dict(color='blue')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast,
+                                mode='lines',
+                                name='Forecast',
+                                line=dict(color='red')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast_upper,
+                                mode='lines',
+                                name='Upper Bound',
+                                line=dict(width=0),
+                                showlegend=False
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast_lower,
+                                mode='lines',
+                                name='Lower Bound',
+                                line=dict(width=0),
+                                fill='tonexty',
+                                fillcolor='rgba(255, 0, 0, 0.2)',
+                                showlegend=False
+                            ))
+                            st.plotly_chart(fig)
+                            
+                            forecast_df = pd.DataFrame({
+                                'Date': future_dates,
+                                'Forecast': forecast,
+                                'Lower Bound': forecast_lower,
+                                'Upper Bound': forecast_upper
+                            })
+                            st.dataframe(forecast_df)
+                            
+                    except Exception as e:
+                        st.error(f"Error in forecasting: {e}")
+            
+            with pred_tab2:
+                st.subheader("Normal Predictions")
+                
+                if 'best_model' in st.session_state:
+                    best_model = st.session_state['best_model']
+                    best_model_name = st.session_state['best_model_name']
+                    feature_columns = st.session_state['feature_columns']
+                    scaler = st.session_state['scaler']
+                    target_column = st.session_state['target_column']
+                    
+                    st.info(f"Using the best model from training: {best_model_name}")
+                    
+                    forecast_periods = st.slider(
+                        "Number of periods to forecast",
+                        min_value=1,
+                        max_value=365,
+                        value=30,
+                        key="normal_forecast_periods"
+                    )
+                    
+                    if st.button("Generate Normal Forecast"):
+                        try:
+                            last_date = df[date_column].max()
+                            future_dates = pd.date_range(start=last_date, periods=forecast_periods+1)[1:]
+                            
+                            future_df = pd.DataFrame({date_column: future_dates})
+                            
+                            for feature in feature_columns:
+                                if feature in df.columns:
+                                    historical_values = df[feature].values
+                                    X_trend = np.arange(len(historical_values)).reshape(-1, 1)
+                                    trend_model = LinearRegression()
+                                    trend_model.fit(X_trend, historical_values)
+                                    X_future_trend = np.arange(len(historical_values), 
+                                                              len(historical_values) + forecast_periods).reshape(-1, 1)
+                                    trend_values = trend_model.predict(X_future_trend)
+                                    historical_std = np.std(historical_values)
+                                    random_noise = np.random.normal(0, historical_std * 0.1, forecast_periods)
+                                    future_df[feature] = trend_values + random_noise
+                            
+                            X_future = future_df[feature_columns]
+                            X_future_scaled = scaler.transform(X_future)
+                            forecast = best_model.predict(X_future_scaled)
+                            
+                            y_pred_historical = best_model.predict(scaler.transform(df[feature_columns]))
+                            prediction_errors = df[target_column] - y_pred_historical
+                            error_std = np.std(prediction_errors)
+                            
+                            forecast_lower = forecast - 1.96 * error_std
+                            forecast_upper = forecast + 1.96 * error_std
+                            
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                x=df[date_column],
+                                y=df[target_column],
+                                mode='lines',
+                                name='Historical',
+                                line=dict(color='blue')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast,
+                                mode='lines',
+                                name='Forecast',
+                                line=dict(color='red')
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast_upper,
+                                mode='lines',
+                                name='Upper Bound',
+                                line=dict(width=0),
+                                showlegend=False
+                            ))
+                            fig.add_trace(go.Scatter(
+                                x=future_dates,
+                                y=forecast_lower,
+                                mode='lines',
+                                name='Lower Bound',
+                                line=dict(width=0),
+                                fill='tonexty',
+                                fillcolor='rgba(255, 0, 0, 0.2)',
+                                showlegend=False
+                            ))
+                            st.plotly_chart(fig)
+                            
+                            forecast_df = pd.DataFrame({
+                                'Date': future_dates,
+                                'Forecast': forecast,
+                                'Lower Bound': forecast_lower,
+                                'Upper Bound': forecast_upper
+                            })
+                            st.dataframe(forecast_df)
+                            
+                        except Exception as e:
+                            st.error(f"Error in prediction: {e}")
+                else:
+                    st.info("Please train a model in the Modeling tab first")
+            
+            with pred_tab3:
+                st.subheader("Prophet Forecasting")
+                
+                target_col = st.selectbox(
+                    "Select column to forecast with Prophet",
+                    options=df.select_dtypes(include=np.number).columns.tolist(),
+                    key="prophet_target"
+                )
+                
+                forecast_periods = st.slider(
+                    "Forecast Periods for Prophet",
+                    min_value=1,
+                    max_value=365,
+                    value=30,
+                    key="prophet_periods"
+                )
+                
+                if st.button("Run Prophet Forecast"):
+                    try:
+                        prophet_df = df[[date_column, target_col]].copy()
+                        prophet_df.columns = ['ds', 'y']
+                        
+                        model = Prophet()
+                        model.fit(prophet_df)
+                        
+                        future = model.make_future_dataframe(periods=forecast_periods)
+                        forecast = model.predict(future)
+                        
+                        fig = model.plot(forecast)
+                        st.pyplot(fig)
+                        
+                        fig2 = model.plot_components(forecast)
+                        st.pyplot(fig2)
+                        
+                        st.dataframe(forecast.tail(forecast_periods)[['ds', 'yhat', 'yhat_lower', 'yhat_upper']])
+                        
+                    except Exception as e:
+                        st.error(f"Error in Prophet forecasting: {e}")
+        else:
+            st.info("Please train a model in the Modeling tab first")
+    else:
+        st.info("Time series forecasting requires a date column. Please select a date column in the Data Preprocessing section.")
+
+
+def show_association_analysis_page():
+    """Market basket analysis for financial transactions"""
+    st.subheader("Association Analysis")
+    
+    if 'df' in st.session_state:
+        df = st.session_state.df
+        
+        cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        if not cat_cols:
+            st.warning("No categorical columns available for association analysis")
+            return
+        
+        st.subheader("Transaction Co-occurrence")
+        
+        selected_cols = st.multiselect(
+            "Select categorical columns for association analysis",
+            options=cat_cols,
+            default=cat_cols[:min(3, len(cat_cols))]
+        )
+        
+        if len(selected_cols) >= 2:
+            # Create a transaction matrix
+            transaction_matrix = pd.get_dummies(df[selected_cols].astype(str))
+            
+            # Run Apriori algorithm
+            min_support = st.slider("Minimum Support", 0.01, 0.5, 0.1, 0.01)
+            rules = apriori(transaction_matrix, min_support=min_support, use_colnames=True)
+            
+            if not rules.empty:
+                rules_df = association_rules(rules, metric="lift", min_threshold=1)
+                st.dataframe(rules_df.sort_values('confidence', ascending=False))
+                
+                st.subheader("Top Association Rules")
+                top_n = st.slider("Number of rules to display", 1, 20, 5)
+                
+                fig = px.scatter(
+                    rules_df.head(top_n), 
+                    x="support", 
+                    y="confidence",
+                    size="lift",
+                    color="lift",
+                    hover_name="antecedents",
+                    title="Association Rules (Support vs Confidence)"
+                )
+                st.plotly_chart(fig)
+            else:
+                st.warning("No association rules found with current parameters")
+        else:
+            st.warning("Please select at least 2 categorical columns")
+    else:
+        st.info("Please upload data first to perform association analysis")
+
+# Set page configuration - Must be the first Streamlit command
 st.set_page_config(
     page_title="Financial AutoML",
     page_icon="💰",
     layout="wide"
 )
 
+# Custom CSS for better header visibility
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 2.5rem !important;
+        font-weight: 700 !important;
+        margin-bottom: 1rem !important;
+        color: #1E88E5 !important;
+    }
+    .section-header {
+        font-size: 2rem !important;
+        font-weight: 600 !important;
+        margin: 2rem 0 1rem 0 !important;
+        color: #2C3E50 !important;
+        padding-bottom: 0.5rem !important;
+        border-bottom: 2px solid #1E88E5 !important;
+    }
+    .subsection-header {
+        font-size: 1.5rem !important;
+        font-weight: 600 !important;
+        margin: 1.5rem 0 1rem 0 !important;
+        color: #34495E !important;
+    }
+    .plot-title {
+        font-size: 1.2rem !important;
+        font-weight: 500 !important;
+        margin-bottom: 0.5rem !important;
+        color: #2C3E50 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # App title and description
-st.title("Financial AutoML Analysis")
+st.title("Fin Alysis: A Financial AutoML Tool for Simplified Analysis")
 st.markdown("""
 This app performs automated machine learning on financial data.
 Upload your financial CSV file to get insights and predictions!
@@ -37,7 +1141,7 @@ Upload your financial CSV file to get insights and predictions!
 st.sidebar.header("Configuration")
 
 # File uploader
-uploaded_file = st.sidebar.file_uploader("Upload your financial CSV file", type=["csv"])
+uploaded_file = st.sidebar.file_uploader("Upload your financial CSV or Excel file", type=["csv", "xlsx", "xls"])
 
 # Main function to run the app
 def run_automl_app():
@@ -46,6 +1150,9 @@ def run_automl_app():
         df = load_data(uploaded_file)
         
         if df is not None:
+            # Store in session state for other pages
+            st.session_state.df = df
+            
             # Display raw data
             with st.expander("Raw Data Preview"):
                 st.dataframe(df)
@@ -53,9 +1160,21 @@ def run_automl_app():
             
             # Data preprocessing options
             st.sidebar.subheader("Data Preprocessing")
+            
+            # Identify date columns automatically
+            date_columns = []
+            for col in df.columns:
+                try:
+                    pd.to_datetime(df[col])
+                    date_columns.append(col)
+                except:
+                    continue
+            
+            # Date column selection with auto-detection
             date_column = st.sidebar.selectbox(
                 "Select date column (if any)",
-                options=["None"] + list(df.columns),
+                options=["None"] + date_columns,
+                help="Automatically detected date columns are shown first"
             )
             
             # Convert date column if selected
@@ -65,26 +1184,161 @@ def run_automl_app():
             if display_missing_values(df):
                 missing_strategy = st.sidebar.selectbox(
                     "Handle missing values",
-                    options=["None", "Drop", "Fill with mean", "Fill with median", "Fill with 0"]
+                    options=["None", "Drop", "Fill with mean", "Fill with median", "Fill with 0", "Forward fill", "Backward fill"]
                 )
                 
                 if missing_strategy != "None":
                     df = handle_missing_values(df, missing_strategy)
             
-            # Tabs for different sections
-            tab1, tab2, tab3, tab4 = st.tabs(["Data Analysis", "Data Visualization", "Modeling", "Future Predictions"])
+            # Data cleaning options
+            st.sidebar.subheader("Data Cleaning")
+            
+            # Remove duplicates
+            if st.sidebar.checkbox("Remove duplicate rows"):
+                initial_rows = len(df)
+                df = df.drop_duplicates()
+                removed_rows = initial_rows - len(df)
+                if removed_rows > 0:
+                    st.info(f"Removed {removed_rows} duplicate rows")
+            
+            # Handle outliers
+            if st.sidebar.checkbox("Handle outliers"):
+                outlier_method = st.sidebar.selectbox(
+                    "Outlier detection method",
+                    ["IQR", "Z-score", "Percentile"]
+                )
+                
+                numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+                
+                if outlier_method == "IQR":
+                    for col in numeric_columns:
+                        Q1 = df[col].quantile(0.25)
+                        Q3 = df[col].quantile(0.75)
+                        IQR = Q3 - Q1
+                        df[col] = df[col].clip(lower=Q1 - 1.5*IQR, upper=Q3 + 1.5*IQR)
+                elif outlier_method == "Z-score":
+                    for col in numeric_columns:
+                        z_scores = np.abs((df[col] - df[col].mean()) / df[col].std())
+                        df[col] = df[col].mask(z_scores > 3, df[col].mean())
+                elif outlier_method == "Percentile":
+                    percentile = st.sidebar.slider("Percentile threshold", 90, 99, 95)
+                    for col in numeric_columns:
+                        lower = df[col].quantile((100-percentile)/100)
+                        upper = df[col].quantile(percentile/100)
+                        df[col] = df[col].clip(lower=lower, upper=upper)
+                
+                st.info(f"Handled outliers using {outlier_method} method")
+            
+            # Data transformation
+            st.sidebar.subheader("Data Transformation")
+            
+            # Log transformation for highly skewed numeric columns
+            if st.sidebar.checkbox("Apply log transformation to highly skewed columns"):
+                numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+                for col in numeric_columns:
+                    if df[col].min() > 0:  # Only apply log transform to positive values
+                        skewness = df[col].skew()
+                        if abs(skewness) > 1:  # Apply if highly skewed
+                            df[f"{col}_log"] = np.log1p(df[col])
+                            st.info(f"Applied log transformation to {col} (skewness: {skewness:.2f})")
+            
+            # Percentage change calculation
+            if date_column != "None" and st.sidebar.checkbox("Calculate percentage changes"):
+                numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+                for col in numeric_columns:
+                    df[f"{col}_pct_change"] = df[col].pct_change() * 100
+                    st.info(f"Added percentage change for {col}")
+            
+            # Moving averages
+            if date_column != "None" and st.sidebar.checkbox("Calculate moving averages"):
+                window = st.sidebar.slider("Moving average window", 2, 365, 30)
+                numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+                for col in numeric_columns:
+                    df[f"{col}_MA{window}"] = df[col].rolling(window=window).mean()
+                    st.info(f"Added {window}-period moving average for {col}")
+            
+            # Add Download PDF button to sidebar
+            st.sidebar.markdown("---")
+            if st.sidebar.button("Download Analysis Report (PDF)"):
+                try:
+                    financial_ratios = {}
+                    if 'current_ratio' in st.session_state:
+                        financial_ratios['Current Ratio'] = {
+                            'value': st.session_state.current_ratio,
+                            'interpretation': 'Measures ability to pay short-term obligations'
+                        }
+                    if 'quick_ratio' in st.session_state:
+                        financial_ratios['Quick Ratio'] = {
+                            'value': st.session_state.quick_ratio,
+                            'interpretation': 'Measures ability to meet short-term obligations with liquid assets'
+                        }
+                    if 'debt_to_equity' in st.session_state:
+                        financial_ratios['Debt to Equity'] = {
+                            'value': st.session_state.debt_to_equity,
+                            'interpretation': 'Shows proportion of debt and equity used to finance assets'
+                        }
+                    if 'gross_profit_margin' in st.session_state:
+                        financial_ratios['Gross Profit Margin'] = {
+                            'value': st.session_state.gross_profit_margin,
+                            'interpretation': 'Shows percentage of revenue retained after direct costs'
+                        }
+                    
+                    numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+                    pdf_buffer = generate_pdf_report(df, date_column, numeric_columns, financial_ratios)
+                    
+                    st.sidebar.download_button(
+                        label="Click to Download PDF",
+                        data=pdf_buffer,
+                        file_name="financial_analysis_report.pdf",
+                        mime="application/pdf"
+                    )
+                    st.sidebar.success("PDF report generated successfully!")
+                except Exception as e:
+                    st.sidebar.error(f"Error generating PDF: {str(e)}")
+            
+            # Create tabs for different analysis sections
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                "📊 Data Analysis", 
+                "📈 Data Visualization", 
+                "🤖 Modeling", 
+                "🔮 Future Predictions",
+                "🕵️ Fraud Analysis",
+                "🔗 Association Analysis"
+            ])
             
             with tab1:
                 show_data_analysis_page(df)
                 
             with tab2:
-                show_data_visualization_page(df, date_column)
+                visualize_data(df, date_column, 2)
                 
             with tab3:
-                show_modeling_page(df)
-            
+                numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+                show_modeling(df, numeric_cols)
+                
             with tab4:
                 show_future_predictions_page(df, date_column)
+                
+           # In the main app function (run_automl_app), update the tabs section:
+                
+            with tab5:
+
+                try:
+                    from src.pages.fraud_analysis import run_fraud_analysis_page
+                    run_fraud_analysis_page()
+                except ImportError as e:
+                    st.error(f"Failed to import fraud analysis module: {e}")
+                    st.error("Please ensure the file exists at: src/pages/fraud_analysis.py")
+
+            with tab6:
+          
+                try:
+                    from src.pages.association_analysis import show_association_analysis_page
+                    show_association_analysis_page()
+                except ImportError as e:
+                    st.error(f"Failed to import association analysis module: {e}")
+                    st.error("Please ensure the file exists at: src/pages/association_analysis.py")
+
     else:
         # Display instructions when no file is uploaded
         st.info("👆 Please upload a CSV file to get started.")
@@ -110,4 +1364,4 @@ def run_automl_app():
 
 # Run the app
 if __name__ == "__main__":
-    run_automl_app() 
+    run_automl_app()

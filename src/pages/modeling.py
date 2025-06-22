@@ -1,90 +1,64 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from src.utils.data_processing import prepare_data_for_modeling
-from src.models.ml_models import get_available_models, train_and_evaluate_models, find_best_model
-from src.visualization.data_viz import plot_model_performance, plot_actual_vs_predicted, plot_feature_importance
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, AdaBoostRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+import xgboost as xgb
 
-def show_modeling_page(df):
-    """Show modeling page content"""
-    st.header("Predictive Modeling")
-    
-    # Get numerical columns
-    num_cols = df.select_dtypes(include=np.number).columns.tolist()
-    
-    # Select target and features
-    target_col = st.selectbox(
-        "Select target column for prediction",
-        options=num_cols
-    )
-    
-    # Exclude target from feature list
-    feature_cols = [col for col in num_cols if col != target_col]
-    
-    # Only proceed if there are features to use
-    if feature_cols:
-        selected_features = st.multiselect(
-            "Select features for modeling",
-            options=feature_cols,
-            default=feature_cols
-        )
-        
-        if selected_features:
-            test_size = st.slider("Test size (%)", 10, 50, 20) / 100
-            random_state = 42
-            
-            # Prepare data for modeling
-            X, y, X_train, X_test, y_train, y_test, X_train_scaled, X_test_scaled, scaler = prepare_data_for_modeling(
-                df, target_col, selected_features, test_size, random_state
-            )
-            
-            # Get available models
-            models = get_available_models(random_state)
-            
-            # Model selection
-            selected_models = st.multiselect(
-                "Select models to train",
-                options=list(models.keys()),
-                default=["Linear Regression", "Random Forest"]
-            )
-            
-            if selected_models and st.button("Train Models"):
-                st.subheader("Model Performance")
-                
-                # Train and evaluate models
-                results_df, trained_models = train_and_evaluate_models(
-                    X_train_scaled, X_test_scaled, y_train, y_test, selected_models, models
-                )
-                
-                # Display results
-                st.dataframe(results_df)
-                
-                # Plot model performance comparison
-                plot_model_performance(results_df)
-                
-                # Find best model
-                best_model_name, best_r2 = find_best_model(results_df)
-                st.success(f"Best model: {best_model_name} with R2 Score: {best_r2:.4f}")
-                
-                # Get best model
-                best_model = trained_models[best_model_name]
-                
-                # Plot actual vs predicted
-                y_pred_best = best_model.predict(X_test_scaled)
-                plot_actual_vs_predicted(y_test, y_pred_best, best_model_name)
-                
-                # Feature importance for tree-based models
-                if best_model_name in ["Random Forest", "Gradient Boosting", "XGBoost"]:
-                    st.subheader("Feature Importance")
-                    plot_feature_importance(best_model, X.columns, best_model_name)
-                
-                # Save best model info for predictions
-                st.session_state['best_model'] = best_model
-                st.session_state['best_model_name'] = best_model_name
-                st.session_state['feature_columns'] = X.columns.tolist()
-                st.session_state['scaler'] = scaler
-                st.session_state['target_column'] = target_col
-        else:
-            st.warning("Please select at least one feature for modeling")
+def show_modeling(df, numeric_cols):
+    st.markdown('<h1 class="main-header">Modeling</h1>', unsafe_allow_html=True)
+    st.info("This section will be used for building and evaluating machine learning models.")
+    # Add your modeling functionalities here in the future
+    if numeric_cols:
+        st.subheader("Select Target and Features")
+        target_column = st.selectbox("Select the target variable", options=numeric_cols)
+        feature_columns = st.multiselect("Select the feature variables", options=[col for col in numeric_cols if col != target_column])
+
+        if target_column and feature_columns:
+            st.subheader("Model Selection and Training")
+            model_type = st.selectbox("Choose a regression model",
+                                      ["Linear Regression", "Polynomial Regression", "Random Forest",
+                                       "Gradient Boosting", "AdaBoost", "K-Nearest Neighbors", "XGBoost"])
+
+            if st.button("Train Model"):
+                X = df[feature_columns]
+                y = df[target_column]
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+                if model_type == "Linear Regression":
+                    model = LinearRegression()
+                elif model_type == "Polynomial Regression":
+                    degree = st.slider("Polynomial Degree", 2, 5, 2)
+                    model = Pipeline([('poly', PolynomialFeatures(degree=degree)),
+                                      ('scaler', StandardScaler()),
+                                      ('linear', LinearRegression())])
+                elif model_type == "Random Forest":
+                    model = RandomForestRegressor(random_state=42)
+                elif model_type == "Gradient Boosting":
+                    model = GradientBoostingRegressor(random_state=42)
+                elif model_type == "AdaBoost":
+                    model = AdaBoostRegressor(random_state=42)
+                elif model_type == "K-Nearest Neighbors":
+                    n_neighbors = st.slider("Number of Neighbors", 1, 10, 5)
+                    model = KNeighborsRegressor(n_neighbors=n_neighbors)
+                elif model_type == "XGBoost":
+                    model = xgb.XGBRegressor(random_state=42)
+
+                with st.spinner(f"Training {model_type} model..."):
+                    model.fit(X_train, y_train)
+                    y_pred = model.predict(X_test)
+
+                    mse = mean_squared_error(y_test, y_pred)
+                    r2 = r2_score(y_test, y_pred)
+                    mae = mean_absolute_error(y_test, y_pred)
+
+                    st.subheader("Model Evaluation")
+                    st.metric("Mean Squared Error", f"{mse:.2f}")
+                    st.metric("R-squared", f"{r2:.2f}")
+                    st.metric("Mean Absolute Error", f"{mae:.2f}")
     else:
-        st.warning("No numerical features available for modeling (excluding target)") 
+        st.info("No numerical columns available for modeling.")
