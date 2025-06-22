@@ -1,6 +1,6 @@
-# Fin-ALysis: Automated Financial Analysis & Forecasting Tool
+# Fin-Alysis: Automated Financial Analysis & Forecasting Tool
 
-Fin-lLysis is a Streamlit based application that automates stock level financial analysis, exploratory data visualization, feature engineering, and predictive modeling using ML techniques. It has been designed to assist retail investors, and analysts in making data driven financial decisions.
+Fin-Alysis is a Streamlit based application that automates stock level financial analysis, exploratory data visualization, feature engineering, and predictive modeling using ML techniques. It has been designed to assist retail investors, and analysts in making data driven financial decisions.
 
 
 ## Features
