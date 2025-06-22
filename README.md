@@ -1,6 +1,7 @@
-# Financial AutoML App
+# Fin-ALysis: Automated Financial Analysis & Forecasting Tool
 
-A Streamlit-based application for automated machine learning on financial data. This app allows users to upload financial data, perform exploratory data analysis, visualize trends, and train machine learning models to predict future financial performance.
+Fin-lLysis is a Streamlit based application that automates stock level financial analysis, exploratory data visualization, feature engineering, and predictive modeling using ML techniques. It has been designed to assist retail investors, and analysts in making data driven financial decisions.
+
 
 ## Features
 
@@ -37,11 +38,11 @@ streamlit run app.py
 
 ## Sample Data Format
 
-Your CSV file should have columns similar to:
+Your dataset should include:
 
-- Date (for time series analysis)
-- Numerical financial metrics (Revenue, Expenses, Profit, etc.)
-- Optional categorical columns (Categories, Departments, Products, etc.)
+- A Date column for time series operations
+- Numerical metrics such as Revenue, Expenses, Profit
+- Optional categorical columns like Product, Department, Category
 
 ## Example
 
