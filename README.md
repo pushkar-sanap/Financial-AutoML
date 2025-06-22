@@ -56,6 +56,8 @@ A sample dataset might look like:
 | 2023-01-04 | 1100    | 780      | 320    | Product C |
 | 2023-01-05 | 1300    | 850      | 450    | Product B |
 
-## License
-
-MIT 
+## Contributors
+[Pushkar Sanap](https://github.com/pushkar-sanap)
+[Pavit Kaur](https://github.com/pavit15)
+[Amey Jawale](https://github.com/ameyjawale)
+[Ritvik Jeeda](https://github.com/Apollo-RJ)
